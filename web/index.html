@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f6f1e7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Echo Forest">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Echo Forest Web</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>Echo Forest</h1>
+            <p id="statusText">等待麦克风</p>
+          </div>
+        </div>
+
+        <nav class="actions" aria-label="主要操作">
+          <button id="recordButton" class="primary" type="button" aria-pressed="false">
+            <span class="icon" aria-hidden="true">●</span>
+            <span>录音</span>
+          </button>
+          <button id="plantButton" type="button">
+            <span class="icon" aria-hidden="true">＋</span>
+            <span>种树</span>
+          </button>
+          <button id="clearButton" type="button" title="清空画布" aria-label="清空画布">
+            <span class="icon" aria-hidden="true">⌫</span>
+          </button>
+          <button id="saveButton" type="button" title="保存 PNG" aria-label="保存 PNG">
+            <span class="icon" aria-hidden="true">⇩</span>
+          </button>
+        </nav>
+      </header>
+
+      <main class="stage">
+        <canvas id="forestCanvas" aria-label="声音森林画布"></canvas>
+
+        <aside class="meter-panel" aria-label="实时声音数据">
+          <canvas id="waveCanvas" aria-label="实时波形"></canvas>
+          <div class="meter-grid">
+            <label>
+              <span>音量</span>
+              <meter id="volumeMeter" min="0" max="1" value="0"></meter>
+            </label>
+            <label>
+              <span>能量</span>
+              <meter id="energyMeter" min="0" max="1" value="0"></meter>
+            </label>
+            <label>
+              <span>音高</span>
+              <meter id="pitchMeter" min="0" max="1" value="0"></meter>
+            </label>
+          </div>
+          <div class="control-row">
+            <label for="styleSelect">风格</label>
+            <select id="styleSelect">
+              <option value="organic">自然</option>
+              <option value="dots">点阵</option>
+              <option value="mosaic">马赛克</option>
+              <option value="ink">水墨</option>
+              <option value="neon">霓虹</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label for="backgroundPicker">背景</label>
+            <input id="backgroundPicker" type="color" value="#eaf3ed" aria-label="背景颜色">
+          </div>
+          <div class="control-row">
+            <label for="sensitivitySlider">灵敏度</label>
+            <input id="sensitivitySlider" type="range" min="0.6" max="2.2" value="1.2" step="0.05">
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

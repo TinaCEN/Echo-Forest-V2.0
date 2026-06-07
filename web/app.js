@@ -11,6 +11,10 @@ const styleSelect = document.querySelector("#styleSelect");
 const backgroundPicker = document.querySelector("#backgroundPicker");
 const sensitivitySlider = document.querySelector("#sensitivitySlider");
 const statusText = document.querySelector("#statusText");
+const meterPanel = document.querySelector("#meterPanel");
+const meterPanelBody = document.querySelector("#meterPanelBody");
+const panelToggleButton = document.querySelector("#panelToggleButton");
+const panelToggleIcon = document.querySelector("#panelToggleIcon");
 const volumeMeter = document.querySelector("#volumeMeter");
 const energyMeter = document.querySelector("#energyMeter");
 const pitchMeter = document.querySelector("#pitchMeter");
@@ -20,10 +24,23 @@ const palette = {
   leaf: ["#2f7d57", "#5a9d55", "#91a844", "#d6a23c", "#c45d6a", "#6f8f55"],
   blossom: ["#f0a6b5", "#f6c5ca", "#d97887", "#fff0f2"],
   ink: ["#14231a", "#263527", "#4c5a4a"],
-  neon: ["#00c2a8", "#4b7bec", "#ff5d8f", "#ffd166", "#7bd88f"]
+  neon: ["#00c2a8", "#4b7bec", "#ff5d8f", "#ffd166", "#7bd88f"],
+  mosaic: {
+    trunk: ["#ef3f35", "#ffb000", "#1e9bf0", "#34b95a", "#f7d13d", "#8d55ff", "#ff64c7"],
+    leaf: ["#1db954", "#58c95e", "#0d8b36", "#f9d423", "#ef3f35", "#1e9bf0"],
+    willow: ["#0f8f3c", "#26b24d", "#50d06d", "#f7d13d", "#1e9bf0"],
+    plane: ["#26b24d", "#7bd75d", "#f7d13d", "#ef3f35", "#1e9bf0", "#ffb000"],
+    maple: ["#ef3f35", "#ff7518", "#f7d13d", "#1e9bf0", "#34b95a"],
+    pine: ["#0b6f2a", "#16963c", "#2fc85b", "#0e5225", "#f7d13d"],
+    peach: ["#ff63b5", "#ff9bd0", "#f03f7c", "#ffd95a", "#34b95a", "#1e9bf0"],
+    oak: ["#1fa447", "#48c15d", "#f7d13d", "#ef3f35", "#1e9bf0"],
+    cherry: ["#ff64c7", "#ff9bd8", "#ef3f35", "#f7d13d", "#1e9bf0"],
+    ginkgo: ["#f7d13d", "#ffb000", "#ffd95a", "#58c95e", "#1e9bf0"],
+    cypress: ["#0b6f2a", "#14973d", "#31c95c", "#79d96a", "#f7d13d"]
+  }
 };
 
-const treeTypes = ["willow", "maple", "pine", "oak", "cherry"];
+const treeTypes = ["willow", "pine", "peach", "plane", "maple", "oak", "ginkgo", "cypress", "cherry"];
 const state = {
   trees: [],
   audio: null,
@@ -38,7 +55,7 @@ const state = {
     flux: 0,
     waveform: new Float32Array(256)
   },
-  backgroundColor: "#eaf3ed",
+  backgroundColor: "#eeeeea",
   lastPlant: 0,
   ground: 0,
   dpr: 1,
@@ -168,11 +185,23 @@ class Tree {
     this.birth = performance.now();
     this.growth = 0;
     this.ageOffset = Math.random() * 10;
-    this.height = lerp(110, Math.min(330, state.height * 0.5), features.energy);
-    this.width = lerp(6, 20, features.volume);
-    this.branchCount = Math.round(lerp(5, 16, features.energy));
-    this.leafDensity = lerp(0.45, 1.75, Math.max(features.brightness, features.flux));
-    this.spread = lerp(42, 150, features.pitch);
+    const shapeRand = seeded(this.seed + index * 97);
+    const energy = Math.max(features.energy, 0.36);
+    const volume = Math.max(features.volume, 0.32);
+    const pitch = Math.max(features.pitch, 0.42);
+    const colorActivity = Math.max(features.brightness, features.flux, 0.46);
+    const thinTree = shapeRand() < 0.34 || this.type === "willow" || this.type === "cypress" || this.type === "peach";
+    const heightScale = lerp(0.76, 1.18, shapeRand()) * (this.type === "pine" || this.type === "cypress" ? 1.12 : 1);
+    const widthScale = thinTree ? lerp(0.52, 0.82, shapeRand()) : lerp(0.92, 1.38, shapeRand());
+    const branchScale = thinTree ? lerp(0.58, 0.86, shapeRand()) : lerp(0.86, 1.18, shapeRand());
+    this.height = lerp(145, Math.min(380, state.height * 0.58), energy) * heightScale;
+    this.width = lerp(8, 22, volume) * widthScale;
+    this.branchCount = Math.round(lerp(8, 20, energy) * (thinTree ? 1.12 : 0.98));
+    this.leafDensity = lerp(0.9, 2.2, colorActivity);
+    this.spread = lerp(68, 180, pitch) * lerp(0.78, 1.18, shapeRand());
+    this.branchSlimness = branchScale;
+    this.mosaicUnit = Math.round(lerp(10, 17, Math.max(volume, energy)) * lerp(0.82, 1.12, shapeRand()));
+    this.mosaicShift = Math.floor(features.pitch * palette.mosaic.trunk.length);
     this.hueShift = features.pitch;
     this.dragDx = 0;
     this.dragDy = 0;
@@ -184,7 +213,15 @@ class Tree {
   makeStructure() {
     const rand = seeded(this.seed);
     this.branches = [];
-    const branchTotal = this.type === "pine" ? 18 : this.branchCount;
+    const branchTotal = this.type === "pine" || this.type === "cypress"
+      ? 22
+      : this.type === "plane"
+        ? Math.round(this.branchCount * 1.35)
+        : this.type === "peach" || this.type === "cherry"
+          ? Math.round(this.branchCount * 1.2)
+          : this.type === "willow"
+            ? Math.round(this.branchCount * 1.45)
+          : this.branchCount;
     for (let i = 0; i < branchTotal; i += 1) {
       const t = branchTotal === 1 ? 0 : i / (branchTotal - 1);
       const side = i % 2 === 0 ? -1 : 1;
@@ -193,22 +230,55 @@ class Tree {
       let length = this.spread * lerp(0.46, 1.05, rand()) * (1 - t * 0.25);
 
       if (this.type === "willow") {
-        angle = -Math.PI / 2 + side * lerp(0.18, 0.62, rand());
-        length = this.spread * lerp(0.55, 1.15, rand());
-        level = lerp(0.32, 0.96, t);
+        angle = -Math.PI / 2 + side * lerp(0.1, 0.48, rand());
+        length = this.spread * lerp(0.72, 1.42, rand()) * (1 - t * 0.12);
+        level = lerp(0.24, 0.98, t);
       }
 
       if (this.type === "pine") {
-        angle = side * lerp(0.05, 0.82, rand()) + Math.PI;
-        length = this.spread * (1 - t * 0.78) * lerp(0.65, 1.15, rand());
-        level = lerp(0.16, 0.96, t);
+        angle = side === -1 ? Math.PI + lerp(0.04, 0.28, rand()) : -lerp(0.04, 0.28, rand());
+        length = this.spread * (1 - t * 0.72) * lerp(0.72, 1.24, rand());
+        level = lerp(0.12, 0.98, t);
+      }
+
+      if (this.type === "peach") {
+        angle = -Math.PI / 2 + side * lerp(0.36, 1.2, rand()) + (rand() - 0.5) * 0.28;
+        length = this.spread * lerp(0.62, 1.24, rand()) * (1 - t * 0.08);
+        level = lerp(0.24, 0.94, t);
+      }
+
+      if (this.type === "plane") {
+        angle = -Math.PI / 2 + side * lerp(0.48, 1.32, rand());
+        length = this.spread * lerp(0.85, 1.38, rand()) * (1 - t * 0.12);
+        level = lerp(0.28, 0.95, t);
+      }
+
+      if (this.type === "ginkgo") {
+        angle = -Math.PI / 2 + side * lerp(0.22, 1.08, rand());
+        length = this.spread * lerp(0.55, 1.18, rand()) * (0.68 + t * 0.32);
+        level = lerp(0.36, 0.96, t);
+      }
+
+      if (this.type === "cypress") {
+        angle = -Math.PI / 2 + side * lerp(0.12, 0.34, rand());
+        length = this.spread * lerp(0.25, 0.64, rand()) * (1 - t * 0.38);
+        level = lerp(0.12, 0.98, t);
       }
 
       this.branches.push({ level, angle, length, phase: rand() * Math.PI * 2, side });
     }
 
     this.crown = [];
-    const leaves = Math.round(this.branchCount * this.leafDensity * 8);
+    const leafMultiplier = {
+      willow: 15,
+      plane: 14,
+      pine: 10,
+      peach: 14,
+      cherry: 12,
+      ginkgo: 13,
+      cypress: 11
+    }[this.type] || 9;
+    const leaves = Math.round(Math.min(260, this.branchCount * this.leafDensity * leafMultiplier));
     for (let i = 0; i < leaves; i += 1) {
       this.crown.push({
         branch: Math.floor(rand() * this.branches.length),
@@ -241,6 +311,13 @@ class Tree {
     const trunkHeight = this.height * Math.min(1, this.growth / 0.42);
     const topX = wind * 0.22;
     const topY = -trunkHeight;
+
+    if (style === "mosaic") {
+      this.drawMosaicTree(now, features, wind, trunkHeight);
+      ctx.restore();
+      return;
+    }
+
     drawTaperedLine(0, 0, topX, topY, this.width * 1.35, this.width * 0.45, randomFrom(palette.bark, this.seed), style);
 
     if (this.growth > 0.18) {
@@ -252,6 +329,226 @@ class Tree {
     }
 
     ctx.restore();
+  }
+
+  drawMosaicTree(now, features, wind, trunkHeight) {
+    const unit = this.mosaicUnit * (0.9 + features.energy * 0.18);
+    this.drawMosaicTrunk(trunkHeight, wind, unit);
+
+    if (this.growth > 0.18) {
+      this.drawMosaicBranches(now, features, wind, unit);
+    }
+
+    if (this.growth > 0.5) {
+      this.drawMosaicLeaves(now, features, wind, unit);
+    }
+
+    if (this.growth > 0.68) {
+      this.drawMosaicAccentTwigs(now, features, wind, unit);
+    }
+  }
+
+  drawMosaicTrunk(trunkHeight, wind, unit) {
+    const rows = Math.max(5, Math.floor(trunkHeight / (unit * 0.72)));
+    const colorSet = palette.mosaic.trunk;
+    for (let i = 0; i <= rows; i += 1) {
+      const t = i / rows;
+      const y = -trunkHeight * t;
+      const centerX = wind * 0.18 * t + Math.sin(this.seed + t * 8) * unit * 0.08;
+      const isBroad = this.type === "plane" || this.type === "oak";
+      const columns = isBroad && t < 0.36 ? 2 : (this.width > 13 && t < 0.52 ? 2 : 1);
+      const size = unit * lerp(1.12, 0.74, t);
+      for (let col = 0; col < columns; col += 1) {
+        const offset = (col - (columns - 1) / 2) * unit * 0.74;
+        const color = colorSet[(i + col + this.mosaicShift) % colorSet.length];
+        drawMosaicBlock(centerX + offset, y, size, color, this.seed + i * 19 + col);
+      }
+    }
+  }
+
+  drawMosaicBranches(now, features, wind, unit) {
+    const branchGrowth = clamp((this.growth - 0.18) / 0.82, 0, 1);
+    for (let i = 0; i < this.branches.length; i += 1) {
+      const branch = this.branches[i];
+      if (branchGrowth < branch.level * 0.74) continue;
+
+      const localGrowth = clamp((branchGrowth - branch.level * 0.42) / 0.58, 0, 1);
+      const startY = -this.height * branch.level * this.growth;
+      const startX = wind * branch.level * 0.34;
+      const sway = Math.sin(now * 0.0019 + branch.phase) * (2 + features.volume * 9) * branch.level;
+      const length = branch.length * easeOutCubic(localGrowth);
+      let endX = startX + Math.cos(branch.angle) * length + sway;
+      let endY = startY + Math.sin(branch.angle) * length * 0.62;
+
+      if (this.type === "willow") {
+        endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.9 + localGrowth * 18;
+      }
+
+      if (this.type === "pine" || this.type === "cypress") {
+        endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.18;
+      }
+
+      if (this.type === "plane") {
+        endY = startY + Math.sin(branch.angle) * length * 0.46;
+      }
+
+      if (this.type === "peach") {
+        endY = startY + Math.sin(branch.angle) * length * 0.5 - unit * 0.2;
+      }
+
+      if (this.type === "ginkgo") {
+        endY = startY + Math.sin(branch.angle) * length * 0.38 - unit * 0.4;
+      }
+
+      const branchPalette = this.type === "pine" || this.type === "cypress"
+        ? palette.mosaic[this.type]
+        : palette.mosaic.trunk;
+      drawMosaicBlockLine(
+        startX,
+        startY,
+        endX,
+        endY,
+        unit * lerp(0.36, 0.74, 1 - branch.level) * this.branchSlimness,
+        branchPalette,
+        this.seed + i * 41
+      );
+
+      if (this.type === "willow" && localGrowth > 0.42) {
+        const strandCount = i % 3 === 0 ? 2 : 1;
+        for (let strand = 0; strand < strandCount; strand += 1) {
+          const strandOffset = (strand - (strandCount - 1) / 2) * unit * 0.9;
+          const strandX = endX + strandOffset + Math.sin(now * 0.0017 + branch.phase + strand) * unit * 0.28;
+          const strandY = endY + length * lerp(0.34, 0.62, (i % 5) / 4);
+          drawMosaicBlockLine(endX + strandOffset * 0.35, endY, strandX, strandY, unit * 0.28, palette.mosaic.willow, this.seed + i * 83 + strand);
+        }
+      }
+
+      if (this.type !== "pine" && this.type !== "cypress" && localGrowth > 0.62 && branch.length > 58) {
+        const splitA = branch.angle + branch.side * 0.44;
+        const splitB = branch.angle - branch.side * 0.3;
+        const twigScale = this.type === "peach" ? 0.3 : 0.24;
+        drawMosaicBlockLine(endX, endY, endX + Math.cos(splitA) * length * 0.3, endY + Math.sin(splitA) * length * twigScale, unit * 0.28 * this.branchSlimness, branchPalette, this.seed + i * 53);
+        drawMosaicBlockLine(endX, endY, endX + Math.cos(splitB) * length * 0.24, endY + Math.sin(splitB) * length * 0.18, unit * 0.24 * this.branchSlimness, branchPalette, this.seed + i * 67);
+      }
+
+      if (this.type === "peach" && localGrowth > 0.5 && i % 2 === 0) {
+        const blossomFork = branch.angle + branch.side * lerp(0.38, 0.72, (i % 5) / 4);
+        drawMosaicBlockLine(endX, endY, endX + Math.cos(blossomFork) * length * 0.34, endY + Math.sin(blossomFork) * length * 0.22, unit * 0.22, palette.mosaic.peach, this.seed + i * 97);
+      }
+
+      if ((this.type === "pine" || this.type === "cypress") && i % 2 === 0 && localGrowth > 0.55) {
+        const shelf = branch.side === -1 ? Math.PI : 0;
+        const shelfLength = length * lerp(0.18, 0.34, 1 - branch.level);
+        drawMosaicBlockLine(endX, endY, endX + Math.cos(shelf) * shelfLength, endY + unit * 0.24, unit * 0.22, branchPalette, this.seed + i * 109);
+      }
+    }
+  }
+
+  drawMosaicLeaves(now, features, wind, unit) {
+    const leafGrowth = easeOutCubic(clamp((this.growth - 0.5) / 0.5, 0, 1));
+    const maxLeaves = Math.floor(this.crown.length * leafGrowth);
+    const colorSet = palette.mosaic[this.type] || palette.mosaic.leaf;
+
+    for (let i = 0; i < maxLeaves; i += 1) {
+      const leaf = this.crown[i];
+      const branch = this.branches[leaf.branch] || this.branches[0];
+      const sway = Math.sin(now * 0.0024 + leaf.spin) * (2 + features.energy * 8);
+      const baseY = -this.height * branch.level * this.growth;
+      let x = Math.cos(branch.angle) * branch.length * leaf.offset + sway + wind * branch.level * 0.25;
+      let y = baseY + Math.sin(branch.angle) * branch.length * leaf.offset * 0.6;
+
+      if (this.type === "willow") {
+        y += branch.length * leaf.offset * 0.72;
+        x *= 0.56;
+      }
+
+      if (this.type === "pine" || this.type === "cypress") {
+        y = baseY + Math.abs(Math.sin(branch.angle)) * branch.length * leaf.offset * 0.12;
+      }
+
+      if (this.type === "peach") {
+        x += (Math.sin(leaf.spin) * this.spread * 0.18) * leaf.offset;
+        y -= this.height * 0.04 + Math.cos(leaf.spin) * unit * 0.8;
+      }
+
+      const jitter = seeded(this.seed + i * 17);
+      x += (jitter() - 0.5) * this.spread * (this.type === "cypress" ? 0.16 : 0.38);
+      y += (jitter() - 0.5) * (this.type === "plane" ? 44 : 22);
+
+      if (this.type === "plane" || this.type === "oak") {
+        x += (jitter() - 0.5) * this.spread * 0.38;
+        y -= this.height * 0.06;
+      }
+
+      if (this.type === "ginkgo") {
+        x += (jitter() - 0.5) * this.spread * 0.5;
+        y -= this.height * 0.12 * leaf.offset;
+      }
+
+      if (this.type === "cypress") {
+        x *= 0.44;
+        y -= unit * 0.4;
+      }
+
+      const color = colorSet[(Math.floor(leaf.tone * colorSet.length) + i + this.mosaicShift) % colorSet.length];
+      const size = unit * lerp(0.52, this.type === "peach" ? 1.18 : 1.38, leaf.tone) * (0.9 + features.volume * 0.22);
+      drawMosaicLeafBlock(x, y, size, color, this.seed + i * 29, this.type);
+
+      if (this.type === "willow" && i % 5 === 0) {
+        drawMosaicBlockLine(x, y - size * 0.25, x + Math.sin(leaf.spin) * unit * 0.45, y + size * 1.75, size * 0.42, colorSet, this.seed + i * 31);
+      }
+    }
+  }
+
+  drawMosaicAccentTwigs(now, features, wind, unit) {
+    const branchGrowth = clamp((this.growth - 0.18) / 0.82, 0, 1);
+    const spacing = this.type === "willow" ? 2 : 3;
+    for (let i = 0; i < this.branches.length; i += 1) {
+      if (i % spacing !== 0) continue;
+      const branch = this.branches[i];
+      if (branchGrowth < branch.level * 0.82) continue;
+
+      const localGrowth = clamp((branchGrowth - branch.level * 0.42) / 0.58, 0, 1);
+      const startY = -this.height * branch.level * this.growth;
+      const startX = wind * branch.level * 0.34;
+      const sway = Math.sin(now * 0.0019 + branch.phase) * (2 + features.volume * 9) * branch.level;
+      const length = branch.length * easeOutCubic(localGrowth);
+      let endX = startX + Math.cos(branch.angle) * length + sway;
+      let endY = startY + Math.sin(branch.angle) * length * 0.62;
+
+      if (this.type === "willow") {
+        endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.9 + localGrowth * 18;
+      }
+
+      if (this.type === "pine" || this.type === "cypress") {
+        endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.18;
+      }
+
+      if (this.type === "plane") {
+        endY = startY + Math.sin(branch.angle) * length * 0.46;
+      }
+
+      if (this.type === "peach") {
+        endY = startY + Math.sin(branch.angle) * length * 0.5 - unit * 0.2;
+      }
+
+      if (this.type === "ginkgo") {
+        endY = startY + Math.sin(branch.angle) * length * 0.38 - unit * 0.4;
+      }
+
+      const midX = lerp(startX, endX, this.type === "willow" ? 0.76 : 0.58);
+      const midY = lerp(startY, endY, this.type === "willow" ? 0.48 : 0.66);
+
+      if (this.type === "willow") {
+        drawMosaicBlockLine(midX, midY, endX + Math.sin(branch.phase) * unit * 0.45, endY + length * 0.48, unit * 0.18, palette.mosaic.willow, this.seed + i * 127);
+      } else if (this.type === "pine" || this.type === "cypress") {
+        drawMosaicBlockLine(midX, midY, endX, endY + unit * 0.18, unit * 0.18, palette.mosaic[this.type], this.seed + i * 131);
+      } else if (this.type === "peach") {
+        drawMosaicBlockLine(midX, midY, endX, endY, unit * 0.2, palette.mosaic.peach, this.seed + i * 137);
+      } else {
+        drawMosaicBlockLine(midX, midY, endX, endY, unit * 0.18 * this.branchSlimness, palette.mosaic.trunk, this.seed + i * 139);
+      }
+    }
   }
 
   drawBranches(now, features, wind, style) {
@@ -270,14 +567,14 @@ class Tree {
         endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.9 + localGrowth * 18;
       }
 
-      if (this.type === "pine") {
+      if (this.type === "pine" || this.type === "cypress") {
         endY = startY + Math.abs(Math.sin(branch.angle)) * length * 0.18;
       }
 
-      const color = this.type === "pine" ? "#2e6142" : randomFrom(palette.bark, this.seed + branch.level * 31);
-      drawStyledLine(startX, startY, endX, endY, Math.max(1, this.width * (0.34 + (1 - branch.level) * 0.24)), color, style);
+      const color = this.type === "pine" || this.type === "cypress" ? "#2e6142" : randomFrom(palette.bark, this.seed + branch.level * 31);
+      drawStyledLine(startX, startY, endX, endY, Math.max(1, this.width * this.branchSlimness * (0.3 + (1 - branch.level) * 0.22)), color, style);
 
-      if (this.type !== "pine" && localGrowth > 0.64 && branch.length > 58) {
+      if (this.type !== "pine" && this.type !== "cypress" && localGrowth > 0.64 && branch.length > 58) {
         const splitA = branch.angle + branch.side * 0.42;
         const splitB = branch.angle - branch.side * 0.28;
         drawStyledLine(endX, endY, endX + Math.cos(splitA) * length * 0.28, endY + Math.sin(splitA) * length * 0.22, Math.max(1, this.width * 0.18), color, style);
@@ -303,7 +600,7 @@ class Tree {
         x *= 0.62;
       }
 
-      if (this.type === "pine") {
+      if (this.type === "pine" || this.type === "cypress") {
         y = baseY + Math.abs(Math.sin(branch.angle)) * branch.length * leaf.offset * 0.12;
       }
 
@@ -312,8 +609,8 @@ class Tree {
       y += (jitter() - 0.5) * 20;
 
       let colorSet = palette.leaf;
-      if (this.type === "cherry") colorSet = palette.blossom;
-      if (this.type === "pine") colorSet = ["#1f5a3f", "#2f7d57", "#173d2c"];
+      if (this.type === "cherry" || this.type === "peach") colorSet = palette.blossom;
+      if (this.type === "pine" || this.type === "cypress") colorSet = ["#1f5a3f", "#2f7d57", "#173d2c"];
       if (style === "neon") colorSet = palette.neon;
       if (style === "ink") colorSet = palette.ink;
 
@@ -346,24 +643,8 @@ function resize() {
 
 function drawBackground(now) {
   const background = hexToRgb(state.backgroundColor) || { r: 234, g: 243, b: 237 };
-  const gradient = ctx.createLinearGradient(0, 0, 0, state.height);
-  gradient.addColorStop(0, mixRgb(background, { r: 255, g: 253, b: 247 }, 0.64));
-  gradient.addColorStop(0.58, rgbToCss(background));
-  gradient.addColorStop(1, mixRgb(background, { r: 47, g: 125, b: 87 }, 0.2));
-  ctx.fillStyle = gradient;
+  ctx.fillStyle = rgbToCss(background);
   ctx.fillRect(0, 0, state.width, state.height);
-
-  ctx.save();
-  ctx.strokeStyle = "rgba(47, 125, 87, 0.18)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 18; i += 1) {
-    const y = state.ground + i * 9 + Math.sin(now * 0.001 + i) * 2;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(state.width * 0.25, y - 9, state.width * 0.75, y + 9, state.width, y - 2);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function drawWaveform() {
@@ -487,6 +768,15 @@ function saveImage() {
   link.click();
 }
 
+function setMeterPanelCollapsed(collapsed) {
+  meterPanel.classList.toggle("is-collapsed", collapsed);
+  meterPanelBody.hidden = collapsed;
+  panelToggleButton.setAttribute("aria-expanded", String(!collapsed));
+  panelToggleButton.setAttribute("aria-label", collapsed ? "展开数据面板" : "折叠数据面板");
+  panelToggleButton.title = collapsed ? "展开数据面板" : "折叠数据面板";
+  panelToggleIcon.textContent = collapsed ? "⌃" : "⌄";
+}
+
 function drawStyledLine(x1, y1, x2, y2, width, color, style) {
   if (style === "dots") {
     const distance = Math.hypot(x2 - x1, y2 - y1);
@@ -516,6 +806,96 @@ function drawStyledLine(x1, y1, x2, y2, width, color, style) {
   }
 
   drawTaperedLine(x1, y1, x2, y2, width, width * 0.45, color, style);
+}
+
+function drawMosaicBlockLine(x1, y1, x2, y2, unit, colors, seed) {
+  const distance = Math.hypot(x2 - x1, y2 - y1);
+  const steps = Math.max(2, Math.floor(distance / Math.max(4, unit * 0.72)));
+  const rand = seeded(seed);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const nx = Math.sin(angle);
+  const ny = -Math.cos(angle);
+
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const color = Array.isArray(colors) ? colors[(i + Math.floor(rand() * colors.length)) % colors.length] : colors;
+    const jitter = (rand() - 0.5) * unit * 0.28;
+    const size = unit * lerp(0.78, 1.18, rand());
+    drawMosaicBlock(
+      lerp(x1, x2, t) + nx * jitter,
+      lerp(y1, y2, t) + ny * jitter,
+      size,
+      color,
+      seed + i * 11
+    );
+  }
+}
+
+function drawMosaicLeafBlock(x, y, size, color, seed, type) {
+  drawMosaicBlock(x, y, size, color, seed);
+
+  const rand = seeded(seed + 73);
+  const chips = type === "plane" || type === "oak" || type === "peach" ? 2 : (type === "willow" || type === "cherry" ? 1 : 0);
+  const accentSet = palette.mosaic[type] || palette.mosaic.leaf;
+  for (let i = 0; i < chips; i += 1) {
+    if (rand() < 0.24) continue;
+    const chipSize = size * lerp(0.28, 0.52, rand());
+    const chipColor = accentSet[Math.floor(rand() * accentSet.length) % accentSet.length];
+    drawMosaicBlock(
+      x + (rand() - 0.5) * size * 2.1,
+      y + (rand() - 0.5) * size * 1.8,
+      chipSize,
+      chipColor,
+      seed + i * 101
+    );
+  }
+}
+
+function drawMosaicBlock(x, y, size, color, seed) {
+  const s = Math.max(3, size);
+  const half = s / 2;
+  const rand = seeded(seed);
+  const px = Math.round((x + (rand() - 0.5) * 0.7) * 2) / 2;
+  const py = Math.round((y + (rand() - 0.5) * 0.7) * 2) / 2;
+
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.fillStyle = "rgba(23, 33, 27, 0.14)";
+  ctx.fillRect(-half + s * 0.1, -half + s * 0.14, s, s);
+
+  ctx.fillStyle = color;
+  ctx.fillRect(-half, -half, s, s);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.26)";
+  ctx.fillRect(-half, -half, s, Math.max(1, s * 0.14));
+  ctx.fillRect(-half, -half, Math.max(1, s * 0.12), s);
+
+  ctx.strokeStyle = "rgba(23, 33, 27, 0.26)";
+  ctx.lineWidth = Math.max(0.65, s * 0.045);
+  ctx.strokeRect(-half, -half, s, s);
+
+  if (s >= 6.5) {
+    const cols = s >= 12 ? 2 : 1;
+    const rows = s >= 12 ? 2 : 1;
+    const stepX = s / (cols + 1);
+    const stepY = s / (rows + 1);
+    const radius = s * (cols === 2 ? 0.115 : 0.16);
+    for (let row = 1; row <= rows; row += 1) {
+      for (let col = 1; col <= cols; col += 1) {
+        const cx = -half + stepX * col;
+        const cy = -half + stepY * row;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(23, 33, 27, 0.22)";
+        ctx.lineWidth = Math.max(0.5, radius * 0.28);
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawTaperedLine(x1, y1, x2, y2, widthA, widthB, color, style) {
@@ -548,7 +928,7 @@ function drawLeaf(x, y, size, angle, color, style, type) {
     ctx.fill();
   } else if (style === "mosaic") {
     ctx.fillRect(-size * 0.65, -size * 0.65, size * 1.3, size * 1.3);
-  } else if (type === "cherry") {
+  } else if (type === "cherry" || type === "peach") {
     for (let i = 0; i < 5; i += 1) {
       ctx.rotate((Math.PI * 2) / 5);
       ctx.beginPath();
@@ -629,6 +1009,9 @@ clearButton.addEventListener("click", () => {
   state.trees = [];
 });
 saveButton.addEventListener("click", saveImage);
+panelToggleButton.addEventListener("click", () => {
+  setMeterPanelCollapsed(!meterPanel.classList.contains("is-collapsed"));
+});
 backgroundPicker.addEventListener("input", (event) => {
   state.backgroundColor = event.target.value;
 });
@@ -648,6 +1031,14 @@ window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", () => setTimeout(resize, 250));
 
 resize();
-plantFromAudio(state.width * 0.36, state.ground + 6);
-plantFromAudio(state.width * 0.58, state.ground + 2);
+[
+  [0.24, 10],
+  [0.38, 2],
+  [0.52, 8],
+  [0.65, -4],
+  [0.78, 6],
+  [0.88, 0]
+].forEach(([x, y]) => {
+  plantFromAudio(state.width * x, state.ground + y);
+});
 requestAnimationFrame(tick);
